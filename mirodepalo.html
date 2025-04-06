@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Miro de palo</title>
+<style>
+  body { font-family: sans-serif; margin: 0; overflow: hidden; background-color: #f4f7f9; }
+  #miro-panel {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    background-color: #e9eef2;
+    cursor: grab;
+    user-select: none;
+    overflow: hidden;
+  }
+.miro-panel-content {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform-origin: top left;
+  background-color: #f4f7f9; /* Fondo claro */
+  background-image: linear-gradient(to right, rgba(0, 0, 0, 0.2) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(0, 0, 0, 0.2) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+  .sticky-note {
+    position: absolute;
+    border: 1px solid #ccc;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+    padding: 0;
+    min-width: 150px;
+    min-height: 100px;
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    z-index: 1;
+    overflow: hidden;
+  }
+  .sticky-note.selected_ {
+    border: 2px solid #007bff;
+    z-index: 2;
+  }
+  .sticky-note.selected {
+    box-shadow: 4px 4px 4px rgba(0, 0, 0, 0.4);
+    z-index: 2;
+  }
+  .note-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .note-content textarea {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    font-family: sans-serif;
+    font-size: inherit;
+    resize: none;
+    padding: 10px;
+    background-color: transparent;
+    box-sizing: border-box;
+    overflow: hidden;     /* evita barra de scroll */
+  }
+  .resizer {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #ccc;
+    border: 1px solid #999;
+    cursor: se-resize;
+    bottom: 2px;
+    right: 2px;
+    z-index: 10;
+  }
+  #toolbar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+  }
+  #add-note-btn {
+    padding: 8px 15px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 10px;
+  }
+#context-menu {
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ccc;
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 10px;
+  z-index: 12;
+  display: none;
+  /* Definir un ancho fijo si es necesario */
+  /* width: 150px; */
+}
+
+.menu-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 14px; /* Tamaño de fuente fijo */
+}
+
+.menu-item:hover {
+  background-color: #f0f0f0;
+}
+
+.color-palette {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.color-option {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #eee;
+  cursor: pointer;
+}
+
+.font-size-selector {
+  margin-top: 5px;
+  font-size: 14px; /* Tamaño de fuente fijo para el selector */
+}
+
+.font-size-selector option {
+  font-size: 14px; /* Tamaño de fuente fijo para las opciones */
+}
+  #save-btn, #load-btn {
+    padding: 8px 15px;
+    border: none;
+    background-color: #28a745;
+    color: white;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 10px;
+  }
+  #load-input {
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+  <div id="toolbar">
+    <button id="add-note-btn">Añadir Nota</button>
+    <button id="save-btn">Guardar XML</button>
+    <button id="load-btn">Cargar XML</button>
+    <input type="file" id="load-input" accept=".xml">
+  </div>
+
+  <div id="miro-panel">
+    <div class="miro-panel-content">
+
+    </div>
+  </div>
+
+      <div id="context-menu" style="display: none;">
+        <div class="menu-item">
+          Color:
+          <div class="color-palette">
+            </div>
+        </div>
+        <div class="menu-item">
+          Tamaño de texto:
+          <select class="font-size-selector">
+            <option value="12">Pequeño</option>
+            <option value="14" selected>Normal</option>
+            <option value="16">Mediano</option>
+            <option value="18">Grande</option>
+            <option value="20">Extra Grande</option>
+          </select>
+        </div>
+      </div>
+
+  <script>
+    const miroPanel = document.getElementById('miro-panel');
+    const miroPanelContent = miroPanel.querySelector('.miro-panel-content');
+    const addNoteBtn = document.getElementById('add-note-btn');
+    const contextMenu = document.getElementById('context-menu');
+    const colorPaletteContainer = contextMenu.querySelector('.color-palette');
+    const fontSizeSelector = contextMenu.querySelector('.font-size-selector');
+    const saveBtn = document.getElementById('save-btn');
+    const loadBtn = document.getElementById('load-btn');
+    const loadInput = document.getElementById('load-input');
+    let offsetX, offsetY, isDraggingPanel = false, draggedElement = null, isResizing = false, currentResizer = null, selectedNote = null;
+    let panelX = 0, panelY = 0;
+    let scale = 1;
+    const zoomSensitivity = 0.1;
+    const minScale = 0.2;
+    const maxScale = 5;
+    const colors = ['#fff', '#ffe0b2', '#ffcdd2', '#f8bbd0', '#e1bee7', '#d1c4e9', '#c5cae9', '#bbdefb', '#b3e5fc', '#b2ebf2', '#b2dfdb', '#c8e6c9', '#dcedc8', '#f0f4c3', '#f9fbe7', '#fff9c4', '#ffecb3', '#ffe082', '#ffca28'];
+
+    // Inicializar la paleta de colores del menú contextual
+    colors.forEach(color => {
+      const option = document.createElement('div');
+      option.classList.add('color-option');
+      option.style.backgroundColor = color;
+      option.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (selectedNote) {
+          selectedNote.style.backgroundColor = color;
+        }
+        hideContextMenu();
+      });
+      colorPaletteContainer.appendChild(option);
+    });
+
+    // Evento para cambiar el tamaño del texto desde el menú contextual
+    fontSizeSelector.addEventListener('change', (e) => {
+      if (selectedNote) {
+        const textarea = selectedNote.querySelector('textarea');
+        if (textarea) {
+          textarea.dataset.baseFontSize = e.target.value;
+          adjustTextareaFontSize(textarea.parentElement.parentElement); // Adjust on change
+        }
+      }
+      hideContextMenu();
+    });
+
+    addNoteBtn.addEventListener('click', () => {
+      const panelRect = miroPanel.getBoundingClientRect();
+      const centerX = (panelRect.width / 2 - panelX) / scale;
+      const centerY = (panelRect.height / 2 - panelY) / scale;
+      createStickyNote(centerX, centerY);
+    });
+
+    function createStickyNote(x, y, text = "", color = '#fff', baseFontSize = '50', width = '150px', height = '100px') {
+      const note = document.createElement('div');
+      note.classList.add('sticky-note');
+      note.style.left = `${x}px`;
+      note.style.top = `${y}px`;
+      note.style.backgroundColor = color;
+      note.style.width = width;
+      note.style.height = height;
+
+      const content = document.createElement('div');
+      content.classList.add('note-content');
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.fontSize = `${baseFontSize}px`;
+      textarea.dataset.baseFontSize = baseFontSize; // Almacenar el tamaño de fuente base
+      textarea.style.backgroundColor = 'transparent'; // Fondo transparente
+      content.appendChild(textarea);
+      note.appendChild(content);
+
+      const resizer = document.createElement('div');
+      resizer.classList.add('resizer');
+      resizer.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        isResizing = true;
+        currentResizer = note;
+        offsetX = e.clientX - note.offsetWidth;
+        offsetY = e.clientY - note.offsetHeight;
+      });
+      note.appendChild(resizer);
+
+      note.addEventListener('mousedown', (e) => {
+        if (e.target === note || e.target.closest('.note-content')) {
+          draggedElement = note;
+          offsetX = e.clientX - note.getBoundingClientRect().left;
+          offsetY = e.clientY - note.getBoundingClientRect().top;
+          note.style.cursor = 'grabbing';
+          hideContextMenu();
+          if (selectedNote && selectedNote !== note) {
+            selectedNote.classList.remove('selected');
+            selectedNote = null;
+          }
+        }
+      });
+
+      note.addEventListener('click', (e) => {
+        e.preventDefault();
+        selectedNote = note;
+        selectedNote.classList.add('selected');
+      });
+
+
+
+      note.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        selectedNote = note;
+        selectedNote.classList.add('selected');
+        const textarea = selectedNote.querySelector('textarea');
+        if (textarea && textarea.dataset.baseFontSize) {
+          fontSizeSelector.value = textarea.dataset.baseFontSize;
+        }
+        showContextMenu(e.clientX, e.clientY);
+      });
+
+      textarea.addEventListener('input', () => {
+        adjustTextareaFontSize(note);
+      });
+
+      miroPanelContent.appendChild(note);
+      adjustTextareaFontSize(note);
+      return note;
+    }
+
+    function adjustTextareaFontSize(note) {
+      const textarea = note.querySelector('textarea');
+      if (!textarea || !textarea.dataset.baseFontSize) return;
+
+      const contentHeight = textarea.scrollHeight;
+      const noteHeight = note.offsetHeight;
+      let currentFontSize = parseInt(textarea.style.fontSize);
+      const baseFontSize = parseInt(textarea.dataset.baseFontSize);
+
+      while (contentHeight > noteHeight && currentFontSize > 6) {
+        currentFontSize--;
+        textarea.style.fontSize = `${currentFontSize}px`;
+      }
+
+      while (textarea.scrollHeight <= noteHeight && currentFontSize < baseFontSize) {
+        currentFontSize++;
+        textarea.style.fontSize = `${currentFontSize}px`;
+      }
+    }
+
+    miroPanel.addEventListener('mousedown', (e) => {
+      if (e.target === miroPanel || e.target === miroPanelContent) {
+        isDraggingPanel = true;
+        offsetX = e.clientX - panelX;
+        offsetY = e.clientY - panelY;
+        miroPanel.style.cursor = 'grabbing';
+        hideContextMenu();
+        if (selectedNote) {
+          selectedNote.classList.remove('selected');
+          selectedNote = null;
+        }
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isDraggingPanel) {
+     //   miroPanelContent.style.transform = `translate(${e.clientX - offsetX}px, <span class="math-inline">\{e\.clientY \- offsetY\}px\) scale\(</span>{scale})`;
+        miroPanelContent.style.transform = `translate(${e.clientX - offsetX}px, ${e.clientY - offsetY}px) scale(${scale})`;
+      } else if (draggedElement && !isResizing) {
+        draggedElement.style.left = `${(e.clientX - offsetX - panelX) / scale}px`;
+        draggedElement.style.top = `${(e.clientY - offsetY - panelY) / scale}px`;
+      } else if (isResizing && currentResizer) {
+        const newWidth = (e.clientX - currentResizer.getBoundingClientRect().left) / scale;
+        const newHeight = (e.clientY - currentResizer.getBoundingClientRect().top) / scale;
+        currentResizer.style.width = `${Math.max(newWidth, 50 / scale)}px`;
+        currentResizer.style.height = `${Math.max(newHeight, 50 / scale)}px`;
+        adjustTextareaFontSize(currentResizer);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDraggingPanel) {
+        const transform = miroPanelContent.style.transform.match(/translate\((.*?),\s*(.*?)\)/);
+        if (transform && transform[1] && transform[2]) {
+          panelX = parseFloat(transform[1]);
+          panelY = parseFloat(transform[2]);
+        } else {
+          panelX = 0;
+          panelY = 0;
+        }
+      }
+      isDraggingPanel = false;
+      draggedElement = null;
+      isResizing = false;
+      currentResizer = null;
+      miroPanel.style.cursor = 'grab';
+      const stickyNotes = document.querySelectorAll('.sticky-note');
+      stickyNotes.forEach(note => {
+        note.style.cursor = 'grab';
+      });
+    });
+
+    function showContextMenu(x, y) {
+      contextMenu.style.left = `${(x - panelX) / scale}px`;
+  contextMenu.style.top = `${(y - panelY) / scale}px`;
+      contextMenu.style.display = 'block';
+    }
+
+    function hideContextMenu() {
+      contextMenu.style.display = 'none';
+      if (selectedNote) {
+        selectedNote.classList.remove('selected');
+        selectedNote = null;
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#context-menu') && !e.target.classList.contains('sticky-note') && !e.target.closest('.note-content')) {
+        hideContextMenu();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' && selectedNote) {
+        selectedNote.remove();
+        selectedNote = null;
+        hideContextMenu();
+      }
+    });
+
+    miroPanel.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomChange = e.deltaY > 0 ? -zoomSensitivity : zoomSensitivity;
+      const newScale = scale + zoomChange;
+
+      if (newScale > 0.2 && newScale < 5) {
+        const rect = miroPanelContent.getBoundingClientRect();
+        const mouseX = e.clientX;// - rect.left;
+        const mouseY = e.clientY;// - rect.top;
+
+        panelX = mouseX - (mouseX - panelX) * (newScale / scale);
+        panelY = mouseY - (mouseY - panelY) * (newScale / scale);
+
+        scale = newScale;
+        miroPanelContent.style.transform = `translate(${panelX}px, ${panelY}px) scale(${scale})`;
+
+        // Adjust note positions and sizes during zoom (optional, but can improve visual consistency)
+        document.querySelectorAll('.sticky-note').forEach(note => {
+          // You might need more complex logic here depending on how you want resizing to behave with zoom
+          const originalWidth = parseFloat(note.style.width) || note.offsetWidth / scale;
+          const originalHeight = parseFloat(note.style.height) || note.offsetHeight / scale;
+          note.style.width = `${originalWidth}px`;
+          note.style.height = `${originalHeight}px`;
+          adjustTextareaFontSize(note);
+        });
+      }
+    }, { passive: false });
+
+    saveBtn.addEventListener('click', savePanelToXML);
+    loadBtn.addEventListener('click', () => loadInput.click());
+    loadInput.addEventListener('change', loadPanelFromXML);
+
+    function savePanelToXML() {
+      const notes = document.querySelectorAll('.sticky-note');
+      let xmlString = `<panel scale="<span class="math-inline">\{scale\}" translateX\="</span>{panelX}" translateY="${panelY}">\n`;
+      notes.forEach(note => {
+        const textarea = note.querySelector('textarea');
+        xmlString += `  <note>\n`;
+        xmlString += `    <left>${note.style.left}</left>\n`;
+        xmlString += `    <top>${note.style.top}</top>\n`;
+        xmlString += `    <width>${note.style.width}</width>\n`;
+        xmlString += `    <height>${note.style.height}</height>\n`;
+        xmlString += `    <color>${note.style.backgroundColor}</color>\n`;
+        xmlString += `    <fontSize>${textarea.style.fontSize}</fontSize>\n`;
+        xmlString += `    <content>${escapeXml(textarea.value)}</content>\n`;
+        xmlString += `  </note>\n`;
+      });
+      xmlString += `</panel>`;
+
+      const blob = new Blob([xmlString], { type: 'text/xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'miro_panel.xml';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function escapeXml(unsafe) {
+      return unsafe.replace(/[<>&'"]/g, function (c) {
+        switch (c) {
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '&': return '&amp;';
+          case '\'': return '&apos;';
+          case '"': return '&quot;';
+        }
+        return c;
+      });
+    }
+
+    function loadPanelFromXML(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const xmlString = e.target.result;
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+          const panelElement = xmlDoc.querySelector('panel');
+
+          if (panelElement) {
+            scale = parseFloat(panelElement.getAttribute('scale')) || 1;
+            panelX = parseFloat(panelElement.getAttribute('translateX')) || 0;
+            panelY = parseFloat(panelElement.getAttribute('translateY')) || 0;
+            miroPanelContent.style.transform = `translate(${panelX}px, ${panelY}px) scale(${scale})`;
+
+            // Limpiar las notas existentes
+            const existingNotes = document.querySelectorAll('.sticky-note');
+            existingNotes.forEach(note => note.remove());
+
+            const noteElements = xmlDoc.querySelectorAll('note');
+            noteElements.forEach(noteElement => {
+              const left = noteElement.querySelector('left')?.textContent || '0px';
+              const top = noteElement.querySelector('top')?.textContent || '0px';
+              const width = noteElement.querySelector('width')?.textContent || '150px';
+              const height = noteElement.querySelector('height')?.textContent || '100px';
+              const color = noteElement.querySelector('color')?.textContent || '#fff';
+              const fontSize = noteElement.querySelector('fontSize')?.textContent || '14px';
+              const content = noteElement.querySelector('content')?.textContent ? unescapeXml(noteElement.querySelector('content').textContent) : '';
+
+              const newNote = createStickyNote(parseFloat(left), parseFloat(top), content, color, parseFloat(fontSize), width, height);
+              newNote.querySelector('textarea').style.fontSize = fontSize;
+              newNote.querySelector('textarea').dataset.baseFontSize = parseFloat(fontSize);
+              adjustTextareaFontSize(newNote);
+            });
+          } else {
+            alert('El archivo XML no tiene un formato de panel válido.');
+          }
+        };
+        reader.readAsText(file);
+        loadInput.value = ''; // Resetear el input
+      }
+    }
+
+    function unescapeXml(safe) {
+      return safe.replace(/&lt;|&gt;|&amp;|&apos;|&quot;/g, function (c) {
+        switch (c) {
+          case '&lt;': return '<';
+          case '&gt;': return '>';
+          case '&amp;': return '&';
+          case '&apos;': return '\'';
+          case '&quot;': return '"';
+        }
+        return c;
+      });
+    }
+
+    // Crear una nota inicial
+    createStickyNote(150 / scale, 100 / scale, "¡Holi! Escribe aquí tus mierdas. El texto ahora debería ocupar toda la tarjeta y el tamaño se ajustará automáticamente.", '#fff', '14');
+  </script>
