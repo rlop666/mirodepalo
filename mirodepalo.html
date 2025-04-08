@@ -19,8 +19,8 @@
   height: 100%;
   transform-origin: top left;
   background-color: #f4f7f9; /* Fondo claro */
-  background-image: linear-gradient(to right, rgba(0, 0, 0, 0.2) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(0, 0, 0, 0.2) 1px, transparent 1px);
+  background-image: linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
   background-size: 20px 20px;
 }
   .sticky-note {
@@ -135,6 +135,16 @@
 .font-size-selector option {
   font-size: 14px; /* Tamaño de fuente fijo para las opciones */
 }
+
+.align-selector {
+  margin-top: 5px;
+  font-size: 14px; /* Tamaño de fuente fijo para el selector */
+}
+
+.align-selector option {
+  font-size: 14px; /* Tamaño de fuente fijo para las opciones */
+}
+  
   #save-btn, #load-btn {
     padding: 8px 15px;
     border: none;
@@ -180,6 +190,15 @@
             <option value="20">Extra Grande</option>
           </select>
         </div>
+        <div class="menu-item">
+          Alineación:
+          <select class="align-selector">
+            <option value="left">Izquierda</option>
+            <option value="center" selected>Centrado</option>
+            <option value="right">Derecha</option>
+            <option value="justify">Justificado</option>
+          </select>
+        </div>
       </div>
 
   <script>
@@ -189,6 +208,7 @@
     const contextMenu = document.getElementById('context-menu');
     const colorPaletteContainer = contextMenu.querySelector('.color-palette');
     const fontSizeSelector = contextMenu.querySelector('.font-size-selector');
+    const alignSelector = contextMenu.querySelector('.align-selector');
     const saveBtn = document.getElementById('save-btn');
     const loadBtn = document.getElementById('load-btn');
     const loadInput = document.getElementById('load-input');
@@ -226,7 +246,19 @@
       }
       hideContextMenu();
     });
-
+    
+    // Evento para cambiar la alineación del texto desde el menú contextual
+    alignSelector.addEventListener('change', (e) => {
+      if (selectedNote) {
+        const textarea = selectedNote.querySelector('textarea');
+        if (textarea) {
+          textarea.dataset.baseAlignment = e.target.value;
+        //  adjustTextareaAlign(textarea.parentElement.parentElement); // Adjust on change
+        }
+      }
+      hideContextMenu();
+    });
+    
     addNoteBtn.addEventListener('click', () => {
       const panelRect = miroPanel.getBoundingClientRect();
       const centerX = (panelRect.width / 2 - panelX) / scale;
