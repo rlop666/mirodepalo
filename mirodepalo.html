@@ -61,6 +61,7 @@
     background-color: transparent;
     box-sizing: border-box;
     overflow: hidden;     /* evita barra de scroll */
+    alignContent: center;
   }
   .resizer {
     position: absolute;
@@ -252,7 +253,7 @@
       if (selectedNote) {
         const textarea = selectedNote.querySelector('textarea');
         if (textarea) {
-          textarea.style.alignContent = e.target.value;
+          textarea.style.textAlign = e.target.value;
         //  adjustTextareaAlign(textarea.parentElement.parentElement); // Adjust on change
         }
       }
