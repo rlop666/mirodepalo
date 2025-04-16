@@ -15,8 +15,8 @@
   }
 .miro-panel-content {
   position: absolute;
-  width: 100%;
-  height: 100%;
+  width: 500%;
+  height: 500%;
   transform-origin: top left;
   background-color: #f4f7f9; /* Fondo claro */
   background-image: linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
@@ -403,7 +403,7 @@
         }
       }
       isDraggingPanel = false;
-      draggedElement = null;
+    //  draggedElement = null;    // se comenta para que funcione el undo de mover nota
       isResizing = false;
       currentResizer = null;
       miroPanel.style.cursor = 'grab';
@@ -433,13 +433,6 @@
       }
     });
 
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Delete' && selectedNote) {
-        selectedNote.remove();
-        selectedNote = null;
-        hideContextMenu();
-      }
-    });
 
     miroPanel.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -573,4 +566,133 @@
 
     // Crear una nota inicial
     createStickyNote(150 / scale, 100 / scale, "¡Holi! Escribe aquí tus mierdas. El texto ahora debería ocupar toda la tarjeta y el tamaño se ajustará automáticamente.", '#fff', '14');
+
+
+
+let undoStack = [];
+let lastTextValue = {}; // Para guardar el valor anterior de cada textarea
+
+document.addEventListener('input', (e) => {
+  if (e.target.tagName === 'TEXTAREA') {
+    const noteId = e.target.closest('.sticky-note').dataset.id; // Asume que tienes un ID único para cada nota
+    if (!lastTextValue[noteId]) {
+      lastTextValue[noteId] = e.target.value;
+    }
+  }
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target.tagName === 'TEXTAREA') {
+    const noteId = e.target.closest('.sticky-note').dataset.id;
+    const previousValue = lastTextValue[noteId];
+    const currentValue = e.target.value;
+    if (previousValue !== undefined && previousValue !== currentValue) {
+      undoStack.push({
+        type: 'textChange',
+        target: e.target,
+        previousValue: previousValue
+      });
+    }
+    lastTextValue[noteId] = undefined; // Reset para el próximo cambio
+  }
+});
+
+let draggedNoteData = {}; // Para guardar datos de la nota arrastrada
+
+document.addEventListener('mousedown', (e) => {
+  const note = e.target.closest('.sticky-note');
+  if (note) {
+    draggedNoteData[note.dataset.id] = {
+      left: note.style.left,
+      top: note.style.top
+    };
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (draggedElement) {
+    const noteId = draggedElement.dataset.id;
+    const previousPosition = draggedNoteData[noteId];
+    const currentPosition = {
+      left: draggedElement.style.left,
+      top: draggedElement.style.top
+    };
+    // Verificar si la posición ha cambiado antes de añadir a undoStack
+    if (previousPosition && (previousPosition.left !== currentPosition.left || previousPosition.top !== currentPosition.top)) {
+      undoStack.push({
+        type: 'moveNote',
+        target: draggedElement,
+        previousPosition: previousPosition
+      });
+    }
+    draggedElement = null; // Establecer a null después de registrar la acción
+    draggedNoteData = {};   // Limpiar los datos de la nota arrastrada
+  }
+});
+
+let deletedNoteInfo = null;
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Delete' && selectedNote) {
+    deletedNoteInfo = {
+      type: 'deleteNote',
+      target: selectedNote,
+      parentNode: selectedNote.parentNode,
+      previousSibling: selectedNote.previousSibling, // Importante para la inserción correcta
+      position: { left: selectedNote.style.left, top: selectedNote.style.top },
+      content: selectedNote.querySelector('textarea').value,
+      color: selectedNote.style.backgroundColor,
+      fontSize: selectedNote.querySelector('textarea').style.fontSize,
+      width: selectedNote.style.width,
+      height: selectedNote.style.height
+    };
+    selectedNote.remove();
+    selectedNote = null;
+    hideContextMenu();
+    undoStack.push(deletedNoteInfo);
+  }
+});
+
+function undo() {
+  if (undoStack.length > 0) {
+    const action = undoStack.pop();
+    switch (action.type) {
+
+      case 'deleteNote':
+        if (action.parentNode) {
+          if (action.previousSibling && action.previousSibling.nextSibling) {
+            action.parentNode.insertBefore(action.target, action.previousSibling.nextSibling);
+          } else if (action.previousSibling) {
+            action.parentNode.insertBefore(action.target, action.previousSibling.nextSibling);
+          } else {
+            action.parentNode.prepend(action.target);
+          }
+          action.target.style.left = action.position.left;
+          action.target.style.top = action.position.top;
+          action.target.querySelector('textarea').value = action.content;
+          action.target.style.backgroundColor = action.color;
+          action.target.querySelector('textarea').style.fontSize = action.fontSize;
+          action.target.style.width = action.width;
+          action.target.style.height = action.height;
+          // Re-seleccionar la nota si es necesario
+        }
+        deletedNoteInfo = null;
+        break;
+      case 'moveNote':
+        action.target.style.left = action.previousPosition.left;
+        action.target.style.top = action.previousPosition.top;
+        break;
+      case 'textChange':
+        action.target.value = action.previousValue;
+        break;
+    }
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault(); // Evita el comportamiento predeterminado del navegador
+    undo();
+  }
+});
   </script>
